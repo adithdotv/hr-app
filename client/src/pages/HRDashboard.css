@@ -1,0 +1,64 @@
+/* Main HR Dashboard Container */
+.hr-dashboard-container {
+  display: flex;
+  height: 100vh;
+  background: linear-gradient(to right, #ecf0f1, #bdc3c7);
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  padding: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  margin-left: 270px; /* Adjust for sidebar width */
+  border-radius: 8px;
+  transition: margin-left 0.3s ease;
+}
+
+.main-content h1 {
+  font-size: 32px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.employee-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.employee-table th, .employee-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.employee-table th {
+  background-color: #34495e;
+  color: white;
+}
+
+.employee-table tr:hover {
+  background-color: #f1f1f1;
+}
+
+.error-message {
+  color: red;
+  font-size: 16px;
+  margin-top: 10px;
+}
+
+/* Mobile responsiveness */
+@media screen and (max-width: 768px) {
+  .main-content {
+    margin-left: 200px; /* Reduce main content space */
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .main-content {
+    margin-left: 0; /* Full screen for small devices */
+  }
+}

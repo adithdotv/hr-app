@@ -1,0 +1,57 @@
+.sidebar {
+  background-color: #6a11cb;
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  color: white;
+  padding: 20px;
+  min-height: 100vh;
+  width: 250px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  transition: transform 0.3s ease-in-out;
+  z-index: 10;
+}
+
+.sidebar h2 {
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  margin: 15px 0;
+  font-size: 1.2rem;
+}
+
+.sidebar ul li a {
+  color: white;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.sidebar ul li a:hover,
+.sidebar ul li.logout:hover {
+  color: #ffdf5d;
+  cursor: pointer;
+}
+
+.logout {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* For smaller screens: hide the sidebar by default */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .sidebar.active {
+    transform: translateX(0); /* Show the sidebar when active */
+  }
+}
