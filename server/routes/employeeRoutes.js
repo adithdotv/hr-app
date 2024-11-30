@@ -58,64 +58,89 @@ router.get("/employee", verifyEmployeeToken, async (req, res) => {
   }
 });
 
-
 // Submit a Leave Application
 router.post("/apply-leave", verifyEmployeeToken, async (req, res) => {
-  const { date, reason } = req.body;
+  const { startDate, endDate, reason } = req.body;
 
-  if (!date || !reason) {
-    return res.status(400).json({ message: "Date and reason are required" });
+  if (!startDate || !endDate || !reason) {
+    return res.status(400).json({ message: "Start date, end date, and reason are required" });
   }
 
-  const selectedDate = new Date(date);
+  const start = new Date(startDate);
+  const end = new Date(endDate);
 
-  if (selectedDate < new Date()) {
-    return res.status(400).json({ message: "Cannot select a past date" });
-  }
+  // if (start < new Date() || end < start) {
+  //   return res.status(400).json({
+  //     message: "Start date cannot be in the past, and end date cannot be before the start date",
+  //   });
+  // }
 
   try {
     const employee = await Employee.findById(req.employee.id);
 
-    // Check if leave already exists for the given date
-    const existingLeave = employee.leaveApplications.find(
-      (application) => application.date.toISOString() === selectedDate.toISOString()
-    );
-    if (existingLeave) {
-      return res.status(400).json({ message: "Leave application already exists for this date" });
-    }
-
-    const appliedDate = new Date(date);
-    const appliedMonth = appliedDate.getMonth();
-    const appliedYear = appliedDate.getFullYear();
-
-    const monthlyLeaves = employee.leaveApplications.filter((application) => {
-      const leaveDate = new Date(application.date);
-      return leaveDate.getMonth() === appliedMonth && leaveDate.getFullYear() === appliedYear;
+    // Check for overlapping leave applications
+    const overlappingLeave = employee.leaveApplications.find((application) => {
+      const leaveStart = new Date(application.startDate);
+      const leaveEnd = new Date(application.endDate);
+      return (
+        (start >= leaveStart && start <= leaveEnd) || // Start date overlaps
+        (end >= leaveStart && end <= leaveEnd) || // End date overlaps
+        (start <= leaveStart && end >= leaveEnd) // Completely overlaps
+      );
     });
-    
-    const totalLeavesThisMonth = monthlyLeaves.length;
 
-    // Check if the employee exceeds the 4 leaves per month limit
-    if (totalLeavesThisMonth >= 4) {
-      const deductionPerLeave = Math.round(employee.salary / 30); // Assuming 30 working days
-      employee.currentSalary -= deductionPerLeave;
-
-      employee.leaveApplications.push({ date: selectedDate, reason });
-      await employee.save();
-      return res.status(200).json({
-        message: `Leave applied with salary deduction! Total deduction: ₹${deductionPerLeave}`,
-        remainingSalary: employee.currentSalary,
-        totalLeavesThisMonth: totalLeavesThisMonth + 1,
+    if (overlappingLeave) {
+      return res.status(400).json({
+        message: "Leave application overlaps with an existing leave",
       });
     }
 
-    // Add the new leave application
+    // Calculate number of leave days
+    const leaveDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    // Check for monthly leave limit
+    const appliedMonth = start.getMonth();
+    const appliedYear = start.getFullYear();
+
+    const monthlyLeaves = employee.leaveApplications.filter((application) => {
+      const leaveStart = new Date(application.startDate);
+      return (
+        leaveStart.getMonth() === appliedMonth && leaveStart.getFullYear() === appliedYear
+      );
+    });
+
+    const totalLeavesThisMonth = monthlyLeaves.reduce((sum, leave) => {
+      const leaveStart = new Date(leave.startDate);
+      const leaveEnd = new Date(leave.endDate);
+      return (
+        sum + Math.ceil((leaveEnd - leaveStart) / (1000 * 60 * 60 * 24)) + 1
+      );
+    }, 0);
+
+    if (totalLeavesThisMonth + leaveDays > 4) {
+      const excessDays = totalLeavesThisMonth + leaveDays - 4;
+      const deductionPerDay = Math.round(employee.salary / 30); // Assuming 30 working days
+      const totalDeduction = deductionPerDay * excessDays;
+
+      employee.currentSalary -= totalDeduction;
+      employee.leaveApplications.push({ startDate: start, endDate: end, reason });
+      await employee.save();
+
+      return res.status(200).json({
+        message: `Leave applied with salary deduction! Total deduction: ₹${totalDeduction}`,
+        remainingSalary: employee.currentSalary,
+        totalLeavesThisMonth: totalLeavesThisMonth + leaveDays,
+      });
+    }
+
+    // Add the leave application
+    employee.leaveApplications.push({ startDate: start, endDate: end, reason });
     await employee.save();
 
     return res.json({
       message: "Leave application submitted successfully!",
-      totalLeavesThisMonth: totalLeavesThisMonth + 1,
-      remainingLeaves: Math.max(0, 4 - (totalLeavesThisMonth + 1)),
+      totalLeavesThisMonth: totalLeavesThisMonth + leaveDays,
+      remainingLeaves: Math.max(0, 4 - (totalLeavesThisMonth + leaveDays)),
     });
   } catch (error) {
     console.error(error);

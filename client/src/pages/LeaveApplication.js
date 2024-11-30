@@ -5,7 +5,8 @@ import "./LeaveApplication.css";
 
 const LeaveApplication = () => {
   const [formData, setFormData] = useState({
-    date: "",
+    startDate: "",
+    endDate: "",
     reason: "",
   });
   const [message, setMessage] = useState("");
@@ -53,7 +54,7 @@ const LeaveApplication = () => {
       );
       setMessage(res.data.message);
       setTotalLeaves(res.data.totalLeavesThisMonth);
-      setFormData({ date: "", reason: "" });
+      setFormData({ startDate: "", endDate: "", reason: "" });
       fetchLeaveHistory(); // Refresh leave history after successful submission
     } catch (err) {
       setMessage(
@@ -69,14 +70,26 @@ const LeaveApplication = () => {
         <h2>Apply for Leave</h2>
         <form onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="date">Date</label>
+            <label htmlFor="startDate">Start Date</label>
             <input
               type="date"
-              id="date"
-              name="date"
-              value={formData.date}
+              id="startDate"
+              name="startDate"
+              value={formData.startDate}
               onChange={handleChange}
               min={getTodayDate()}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="endDate">End Date</label>
+            <input
+              type="date"
+              id="endDate"
+              name="endDate"
+              value={formData.endDate}
+              onChange={handleChange}
+              min={formData.startDate || getTodayDate()} // Ensure end date is after start date
               required
             />
           </div>
@@ -94,7 +107,7 @@ const LeaveApplication = () => {
           <button type="submit">Submit</button>
         </form>
         {message && <p className="message">{message}</p>}
-        {totalLeaves && <p className="message">Total Leaves this Month: {totalLeaves}</p>}
+        {totalLeaves && <p className="message">Total Leaves on the Applied Month: {totalLeaves}</p>}
 
         <h3>Leave History</h3>
         {leaveHistory.length === 0 ? (
@@ -103,7 +116,8 @@ const LeaveApplication = () => {
           <table className="leave-history-table">
             <thead>
               <tr>
-                <th>Date</th>
+                <th>Start Date</th>
+                <th>End Date</th>
                 <th>Reason</th>
                 <th>Status</th>
               </tr>
@@ -111,7 +125,8 @@ const LeaveApplication = () => {
             <tbody>
               {leaveHistory.map((leave, index) => (
                 <tr key={index}>
-                  <td>{new Date(leave.date).toLocaleDateString()}</td>
+                  <td>{new Date(leave.startDate).toLocaleDateString()}</td>
+                  <td>{new Date(leave.endDate).toLocaleDateString()}</td>
                   <td>{leave.reason}</td>
                   <td className={leave.status.toLowerCase()}>{leave.status}</td>
                 </tr>

@@ -48,7 +48,8 @@ const EmployeeSchema = new mongoose.Schema({
   },
   leaveApplications: [
     {
-      date: Date,
+      startDate: Date,
+      endDate: Date,
       reason: String,
       status: { type: String, default: "Pending" }, // Pending, Approved, Rejected
     },
