@@ -6,7 +6,9 @@ const jwt = require("jsonwebtoken")
 const multer = require('multer')
 const path = require('path')
 const cron = require("node-cron");
+const validator = require("validator");
 
+dotenv.config();
 
 const router = express.Router();
 
@@ -50,12 +52,28 @@ const generateRandomPassword = (length = 8) => {
   
   // Configure Nodemailer transporter
   const transporter = nodemailer.createTransport({
-    service: "Gmail", // You can use other services like Outlook, or custom SMTP
+    service: "gmail", // You can use other services like Outlook, or custom SMTP
     auth: {
       user: process.env.EMAIL, // Replace with your email
       pass: process.env.EMAIL_PASSWORD, // Replace with your email password or app password
     },
   });
+
+  const calculateLeaveDays = (start, end) => {
+    let leaveDays = 0;
+    let currentDate = new Date(start);
+  
+    while (currentDate <= end) {
+      const day = currentDate.getDay();
+      if (day !== 0) { // Exclude Sundays (0)
+        leaveDays++;
+      } 
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+  
+    return leaveDays;
+  };
+  
   
   // Route to add an employee and send email
   router.post("/employees", verifyHRToken, upload.single("resume"), async (req, res) => {
@@ -66,7 +84,25 @@ const generateRandomPassword = (length = 8) => {
     if (!username || !name || !email || !phone || !position || !department || !joiningDate || !salary) {
       return res.status(400).json({ error: "All fields are required!" });
     }
+
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ error: "Invalid email format!" });
+    }
+
+    
+    if(phone.length!=10){
+      return res.status(400).json({ error: "Incorrect phone number"})
+    }
+
+    const existingEmployee = await Employee.findOne({ username });
+    if (existingEmployee) {
+      return res.status(400).json({ error: "Username already exists. Please choose another username!" });
+    }
   
+    const existingEmail = await Employee.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ error: "Email already exists!" });
+    }
     try {
       const password = generateRandomPassword();
   
@@ -226,16 +262,71 @@ router.get("/employee/:id", verifyHRToken, async (req, res) => {
       if (!leaveApplication) {
         return res.status(404).json({ message: "Leave application not found" });
       }
-      leaveApplication.status = status; // Update the leave status
-      if (status == "Rejected"){
-        if (totalLeavesThisMonth > 4) {
-          const deductionPerLeave = Math.round(employee.salary / 30); // Assuming 30 working days
-          employee.currentSalary += deductionPerLeave;
-        }
-      }
-      await employee.save(); // Save changes to the employee document
   
-      res.json({ message: `Leave application ${status.toLowerCase()} successfully!` });
+      const start = new Date(leaveApplication.startDate);
+      const end = new Date(leaveApplication.endDate);
+      const leaveDays = calculateLeaveDays(start,end)
+  
+      if (leaveApplication.status === "Pending") {
+        // Update the leave status
+        leaveApplication.status = status;
+  
+        if (status === "Approved") {
+          employee.currentSalary -= leaveApplication.totalDeduction; // Deduct the stored totalDeduction
+        } else if (status === "Rejected") {
+          // Normalize leave type to match leaveBalances keys
+          const normalizeLeaveType = (type) => {
+            const leaveTypeMap = {
+              "Annual Leave": "annualLeave",
+              "Casual Leave": "casualLeave",
+              "Sick Leave": "sickLeave",
+            };
+            return leaveTypeMap[type] || null;
+          };
+  
+          const normalizedType = normalizeLeaveType(leaveApplication.type);
+  
+          if (normalizedType && normalizedType in employee.leaveBalances) {
+            employee.leaveBalances[normalizedType] += leaveDays; // Revert the leave days
+          } else {
+            throw new Error("Invalid leave type"); // Handle invalid leave type
+          }
+        }
+  
+        // Update the notifications field
+        employee.notifications = {
+          startDate: leaveApplication.startDate,
+          endDate: leaveApplication.endDate,
+          status: status,
+        };
+  
+        await employee.save(); // Save changes to the employee document
+        res.json({ message: `Leave application ${status.toLowerCase()} successfully!` });
+      } else {
+        return res.status(400).json({ message: "Leave application already processed" });
+      }
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
+  
+  
+  router.get("/notifications", verifyHRToken, async (req, res) => {
+    try {
+      // Fetch all employees and their leaveApplications
+      const employees = await Employee.find({}, "leaveApplications");
+  
+      // Count pending leave applications across all employees
+      const newApplications = employees.reduce((count, employee) => {
+        return (
+          count +
+          employee.leaveApplications.filter((application) => application.status === "Pending").length
+        );
+      }, 0);
+  
+      res.json({ newApplications });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Server error" });
@@ -262,5 +353,25 @@ cron.schedule("0 0 1 * *", async () => {
       console.error("Error resetting current salaries:", error);
     }
   });
+
+  cron.schedule("0 0 1 5 *", async () => {
+    try {
+      console.log("Resetting leave balances to default...");
+  
+      const defaultBalances = {
+        sickLeave: 10,
+        casualLeave: 12,
+        annualLeave: 20,
+      };
+  
+      const result = await Employee.updateMany({}, { $set: { leaveBalances: defaultBalances } });
+  
+      console.log(`Successfully reset leave balances for ${result.nModified} employees.`);
+    } catch (error) {
+      console.error("Error resetting leave balances:", error);
+    }
+  });
+  
+  
 
 module.exports = router

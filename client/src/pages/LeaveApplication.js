@@ -8,10 +8,12 @@ const LeaveApplication = () => {
     startDate: "",
     endDate: "",
     reason: "",
+    type: "", // New field for leave type
   });
   const [message, setMessage] = useState("");
   const [totalLeaves, setTotalLeaves] = useState();
-  const [leaveHistory, setLeaveHistory] = useState([]); // State for leave history
+  const [leaveHistory, setLeaveHistory] = useState([]);
+  const [leaveBalances, setLeaveBalances] = useState({});
 
   const getTodayDate = () => {
     const today = new Date();
@@ -21,6 +23,11 @@ const LeaveApplication = () => {
     return `${year}-${month}-${day}`;
   };
 
+  const isSunday = (date) => {
+    const day = new Date(date).getDay();
+    return day === 0; // 0 represents Sunday in JavaScript's `getDay()`
+  };
+
   const fetchLeaveHistory = async () => {
     try {
       const token = localStorage.getItem("employeeToken");
@@ -28,6 +35,7 @@ const LeaveApplication = () => {
         headers: { Authorization: token },
       });
       setLeaveHistory(res.data.leaveApplications);
+      setLeaveBalances(res.data.leaveBalances)
     } catch (err) {
       console.error("Error fetching leave history:", err.response?.data?.message || err.message);
     }
@@ -38,7 +46,16 @@ const LeaveApplication = () => {
   }, []);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    // Check if the selected date is a Sunday
+    if ((name === "startDate" || name === "endDate") && isSunday(value)) {
+      setMessage("You cannot select a Sunday as a leave date.");
+      return;
+    }
+
+    setMessage(""); // Clear any previous messages
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSubmit = async (e) => {
@@ -54,7 +71,7 @@ const LeaveApplication = () => {
       );
       setMessage(res.data.message);
       setTotalLeaves(res.data.totalLeavesThisMonth);
-      setFormData({ startDate: "", endDate: "", reason: "" });
+      setFormData({ startDate: "", endDate: "", reason: "", type: "" });
       fetchLeaveHistory(); // Refresh leave history after successful submission
     } catch (err) {
       setMessage(
@@ -94,6 +111,21 @@ const LeaveApplication = () => {
             />
           </div>
           <div>
+            <label htmlFor="type">Leave Type</label>
+            <select
+              id="type"
+              name="type"
+              value={formData.type}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select Leave Type</option>
+              <option value="Sick Leave">Sick Leave</option>
+              <option value="Casual Leave">Casual Leave</option>
+              <option value="Annual Leave">Annual Leave</option>
+            </select>
+          </div>
+          <div>
             <label htmlFor="reason">Reason</label>
             <textarea
               id="reason"
@@ -109,6 +141,10 @@ const LeaveApplication = () => {
         {message && <p className="message">{message}</p>}
         {totalLeaves && <p className="message">Total Leaves on the Applied Month: {totalLeaves}</p>}
 
+        <h3>Total Leaves Left</h3>
+        <p>Sick Leave Left:{leaveBalances.sickLeave}</p>
+        <p>Casual Leave Left:{leaveBalances.casualLeave}</p>
+        <p>Annual Leave Left:{leaveBalances.annualLeave}</p>
         <h3>Leave History</h3>
         {leaveHistory.length === 0 ? (
           <p>No leave applications found.</p>
@@ -118,6 +154,7 @@ const LeaveApplication = () => {
               <tr>
                 <th>Start Date</th>
                 <th>End Date</th>
+                <th>Type</th>
                 <th>Reason</th>
                 <th>Status</th>
               </tr>
@@ -127,6 +164,7 @@ const LeaveApplication = () => {
                 <tr key={index}>
                   <td>{new Date(leave.startDate).toLocaleDateString()}</td>
                   <td>{new Date(leave.endDate).toLocaleDateString()}</td>
+                  <td>{leave.type}</td>
                   <td>{leave.reason}</td>
                   <td className={leave.status.toLowerCase()}>{leave.status}</td>
                 </tr>

@@ -1,12 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
 const Employee = require("../models/Employee");
-const dotenv = require("dotenv");
-const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken")
-const multer = require('multer')
-const path = require('path')
-const cron = require("node-cron");
 
 
 const router = express.Router();
@@ -25,16 +20,33 @@ const verifyEmployeeToken = (req, res, next) => {
   }
 };
 
+const calculateLeaveDays = (start, end) => {
+  let leaveDays = 0;
+  let currentDate = new Date(start);
+
+  while (currentDate <= end) {
+    const day = currentDate.getDay();
+    if (day !== 0) { // Exclude Sundays (0)
+      leaveDays++;
+    } 
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return leaveDays;
+};
 
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   try {
     const employee = await Employee.findOne({ username });
-    if (!employee) return res.status(404).json({ error: "User not found" });
+    if (!employee){
+      console.log(username, password)
+      return res.status(404).json({ error: "User not found" });
+    } 
     
-    // const isPasswordValid = await bcrypt.compare(password, employee.password);
-    const isPasswordValid = password == employee.password
+    const isPasswordValid = await bcrypt.compare(password, employee.password);
+    // const isPasswordValid = password == employee.password
     if (!isPasswordValid) return res.status(401).json({ error: "Invalid credentials" });
     const token = jwt.sign({ id: employee._id }, process.env.JWT_SECRET);
     res.status(200).json({ message: "Login successful", token });
@@ -60,23 +72,21 @@ router.get("/employee", verifyEmployeeToken, async (req, res) => {
 
 // Submit a Leave Application
 router.post("/apply-leave", verifyEmployeeToken, async (req, res) => {
-  const { startDate, endDate, reason } = req.body;
+  const { startDate, endDate, reason, type } = req.body;
 
-  if (!startDate || !endDate || !reason) {
-    return res.status(400).json({ message: "Start date, end date, and reason are required" });
+  if (!startDate || !endDate || !reason || !type) {
+    return res.status(400).json({ message: "Start date, end date, reason, and leave type are required" });
   }
 
   const start = new Date(startDate);
   const end = new Date(endDate);
 
-  // if (start < new Date() || end < start) {
-  //   return res.status(400).json({
-  //     message: "Start date cannot be in the past, and end date cannot be before the start date",
-  //   });
-  // }
-
   try {
     const employee = await Employee.findById(req.employee.id);
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
 
     // Check for overlapping leave applications
     const overlappingLeave = employee.leaveApplications.find((application) => {
@@ -89,58 +99,65 @@ router.post("/apply-leave", verifyEmployeeToken, async (req, res) => {
       );
     });
 
-    if (overlappingLeave) {
+    if (overlappingLeave && overlappingLeave.status === "Approved") {
       return res.status(400).json({
         message: "Leave application overlaps with an existing leave",
       });
     }
 
     // Calculate number of leave days
-    const leaveDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    const leaveDays = calculateLeaveDays(start,end)
 
-    // Check for monthly leave limit
-    const appliedMonth = start.getMonth();
-    const appliedYear = start.getFullYear();
+    // Validate leave type and update balances or salary
+    let leaveBalanceKey;
+    switch (type) {
+      case "Sick Leave":
+        leaveBalanceKey = "sickLeave";
+        break;
+      case "Casual Leave":
+        leaveBalanceKey = "casualLeave";
+        break;
+      case "Annual Leave":
+        leaveBalanceKey = "annualLeave";
+        break;
+      default:
+        return res.status(400).json({ message: "Invalid leave type" });
+    }
 
-    const monthlyLeaves = employee.leaveApplications.filter((application) => {
-      const leaveStart = new Date(application.startDate);
-      return (
-        leaveStart.getMonth() === appliedMonth && leaveStart.getFullYear() === appliedYear
-      );
-    });
+    if (leaveBalanceKey) {
+      if (employee.leaveBalances[leaveBalanceKey] >= leaveDays) {
+        // Deduct from the respective leave balance
+        employee.leaveBalances[leaveBalanceKey] -= leaveDays;
+        totalDeduction = 0
+      } else {
+        const excessDays = leaveDays - employee.leaveBalances[leaveBalanceKey];
+        employee.leaveBalances[leaveBalanceKey] = 0;
 
-    const totalLeavesThisMonth = monthlyLeaves.reduce((sum, leave) => {
-      const leaveStart = new Date(leave.startDate);
-      const leaveEnd = new Date(leave.endDate);
-      return (
-        sum + Math.ceil((leaveEnd - leaveStart) / (1000 * 60 * 60 * 24)) + 1
-      );
-    }, 0);
+        // Handle unpaid leave for excess days
+        const deductionPerDay = Math.round(employee.salary / 30); // Assuming 30 working days
+        const totalDeduction = deductionPerDay * excessDays;
 
-    if (totalLeavesThisMonth + leaveDays > 4) {
-      const excessDays = totalLeavesThisMonth + leaveDays - 4;
-      const deductionPerDay = Math.round(employee.salary / 30); // Assuming 30 working days
-      const totalDeduction = deductionPerDay * excessDays;
+        // Add the leave application
+        employee.leaveApplications.push({ startDate: start, endDate: end, reason, type, totalDeduction });
+        await employee.save();
 
-      employee.currentSalary -= totalDeduction;
-      employee.leaveApplications.push({ startDate: start, endDate: end, reason });
-      await employee.save();
 
-      return res.status(200).json({
-        message: `Leave applied with salary deduction! Total deduction: ₹${totalDeduction}`,
-        remainingSalary: employee.currentSalary,
-        totalLeavesThisMonth: totalLeavesThisMonth + leaveDays,
-      });
+        return res.status(200).json({
+          message: `Leave partially approved with salary deduction for ${excessDays} day(s). Total deduction: ₹${totalDeduction}`,
+          remainingSalary: employee.currentSalary,
+          leaveBalances: employee.leaveBalances,
+        });
+      }
     }
 
     // Add the leave application
-    employee.leaveApplications.push({ startDate: start, endDate: end, reason });
+    employee.leaveApplications.push({ startDate: start, endDate: end, reason, type, totalDeduction });
     await employee.save();
 
     return res.json({
       message: "Leave application submitted successfully!",
-      totalLeavesThisMonth: totalLeavesThisMonth + leaveDays,
-      remainingLeaves: Math.max(0, 4 - (totalLeavesThisMonth + leaveDays)),
+      leaveBalances: employee.leaveBalances,
+      remainingSalary: employee.currentSalary,
     });
   } catch (error) {
     console.error(error);
@@ -150,11 +167,11 @@ router.post("/apply-leave", verifyEmployeeToken, async (req, res) => {
 
 router.get("/leave-history", verifyEmployeeToken, async (req, res) => {
   try {
-    const employee = await Employee.findById(req.employee.id, "leaveApplications");
+    const employee = await Employee.findById(req.employee.id);
     if (!employee) {
       return res.status(404).json({ message: "Employee not found" });
     }
-    res.json({ leaveApplications: employee.leaveApplications });
+    res.json({ leaveApplications: employee.leaveApplications, leaveBalances: employee.leaveBalances });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -173,13 +190,14 @@ router.put("/change-password", verifyEmployeeToken, async (req, res) => {
       return res.status(404).json({ message: "Employee not found." });
     }
 
-    const isMatch = currentPassword == employee.password;
+    const isMatch = await bcrypt.compare(currentPassword, employee.password);
+    // const isMatch = currentPassword == employee.password;
     if (!isMatch) {
       return res.status(400).json({ message: "Current password is incorrect." });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    employee.password = await bcrypt.hash(newPassword, salt);
+    // const salt = await bcrypt.genSalt(10);
+    // employee.password = await bcrypt.hash(newPassword, salt);
     await employee.save();
 
     res.json({ message: "Password updated successfully." });
@@ -188,5 +206,28 @@ router.put("/change-password", verifyEmployeeToken, async (req, res) => {
     res.status(500).json({ message: "Server error." });
   }
 });
+
+router.get("/notifications", verifyEmployeeToken, async (req, res) => {
+  try {
+    const employee = await Employee.findById(req.employee.id).select("notifications");
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    recentApplication = employee.notifications
+
+    const notification = {
+      message: `Your leave application from ${new Date(recentApplication.startDate).toLocaleDateString()} to ${new Date(recentApplication.endDate).toLocaleDateString()} was ${recentApplication.status.toLowerCase()}.`,
+      status: recentApplication.status,
+    };
+
+    res.json({ notification });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 
 module.exports = router;

@@ -9,6 +9,8 @@ body {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  font-weight: 500;
+  
 }
 .dashboard-container {
   display: flex;
@@ -169,4 +171,28 @@ body, html {
   margin-top: 10px;
   font-weight: bold;
   color: #333;
+}
+
+form select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  margin-bottom: 15px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+  color: #333;
+  transition: border-color 0.3s ease;
+}
+
+form select:focus {
+  border-color: #007bff;
+  outline: none;
+  background-color: #fff;
+}
+
+form select option {
+  font-size: 16px;
+  padding: 5px;
 }

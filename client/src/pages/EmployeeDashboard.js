@@ -66,6 +66,9 @@ const EmployeeDashboard = () => {
               <strong>Salary:</strong> ${employeeDetails.salary}
             </div>
             <div>
+              <strong>Current Salary:</strong> ${employeeDetails.currentSalary}
+            </div>
+            <div>
             <strong>Resume:</strong>{' '}
             {employeeDetails.resume ? (
               <a

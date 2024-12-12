@@ -106,7 +106,7 @@ const AddEmployee = () => {
           <div className="form-group">
             <label>Phone Number:</label>
             <input
-              type="tel"
+              type="number"
               name="phone"
               placeholder="Enter phone number"
               value={employee.phone}

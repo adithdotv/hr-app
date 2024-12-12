@@ -5,7 +5,8 @@ const EmployeeSchema = new mongoose.Schema({
   username:{
     type: String,
     required: true,
-    unique:true
+    unique:true,
+    trim: true
   },
   name: {
     type: String,
@@ -51,9 +52,21 @@ const EmployeeSchema = new mongoose.Schema({
       startDate: Date,
       endDate: Date,
       reason: String,
-      status: { type: String, default: "Pending" }, // Pending, Approved, Rejected
+      type: { type: String, required: true },
+      status: { type: String, default: "Pending" },// Pending, Approved, Rejected
+      totalDeduction : Number ,
     },
   ],
+  leaveBalances: {
+    sickLeave: { type: Number, default: 10 }, // Sick Leave quota
+    casualLeave: { type: Number, default: 12 }, // Casual Leave quota
+    annualLeave: { type: Number, default: 20 }, // Annual Leave quota
+  },
+  notifications: {
+    startDate: Date,
+    endDate: Date,
+    status: String
+  },
   resume: { type: String, required: false }, 
 }, { timestamps: true });
 

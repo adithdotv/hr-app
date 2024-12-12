@@ -65,7 +65,8 @@ const LeaveManagement = () => {
                 <th>Employee Name</th>
                 <th>Email</th>
                 <th>Role</th>
-                <th>Date</th>
+                <th>Start Date</th>
+                <th>End Date</th>
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -77,7 +78,8 @@ const LeaveManagement = () => {
                   <td>{leave.name}</td>
                   <td>{leave.email}</td>
                   <td>{leave.position}</td>
-                  <td>{new Date(leave.date).toLocaleDateString()}</td>
+                  <td>{new Date(leave.startDate).toLocaleDateString()}</td>
+                  <td>{new Date(leave.endDate).toLocaleDateString()}</td>
                   <td>{leave.reason}</td>
                   <td className={leave.status.toLowerCase()}>{leave.status}</td>
                   <td>
